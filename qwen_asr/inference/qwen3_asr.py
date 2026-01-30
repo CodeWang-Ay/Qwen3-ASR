@@ -733,8 +733,18 @@ class Qwen3ASRModel:
                 prefix = ""
             else:
                 cur_ids = self.processor.tokenizer.encode(state._raw_decoded)
-                end_idx = max(1, len(cur_ids) - int(state.unfixed_token_num))
-                prefix = self.processor.tokenizer.decode(cur_ids[:end_idx])
+                k = int(state.unfixed_token_num)
+                while True:
+                    end_idx = max(0, len(cur_ids) - k)
+                    prefix = self.processor.tokenizer.decode(cur_ids[:end_idx]) if end_idx > 0 else ""
+                    try:
+                        prefix.encode("utf-8").decode("utf-8")
+                        break
+                    except UnicodeError:
+                        if end_idx == 0:
+                            prefix = ""
+                            break
+                        k += 1
 
             prompt = state.prompt_raw + prefix
 
