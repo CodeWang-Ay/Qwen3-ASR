@@ -737,10 +737,9 @@ class Qwen3ASRModel:
                 while True:
                     end_idx = max(0, len(cur_ids) - k)
                     prefix = self.processor.tokenizer.decode(cur_ids[:end_idx]) if end_idx > 0 else ""
-                    try:
-                        prefix.encode("utf-8").decode("utf-8")
+                    if '\ufffd' not in prefix:
                         break
-                    except UnicodeError:
+                    else:
                         if end_idx == 0:
                             prefix = ""
                             break
