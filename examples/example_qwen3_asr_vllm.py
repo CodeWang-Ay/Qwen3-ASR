@@ -147,12 +147,12 @@ def main() -> None:
     asr = Qwen3ASRModel.LLM(
         model=ASR_MODEL_PATH,
         gpu_memory_utilization=0.8,
-        forced_aligner=FORCED_ALIGNER_PATH,
-        forced_aligner_kwargs=dict(
-            dtype=torch.bfloat16,
-            device_map="cuda:7",
-            # attn_implementation="flash_attention_2",
-        ),
+        # forced_aligner=FORCED_ALIGNER_PATH,
+        # forced_aligner_kwargs=dict(
+        #     dtype=torch.bfloat16,
+        #     device_map="cuda:7",
+        #     # attn_implementation="flash_attention_2",
+        # ),
         max_inference_batch_size=32,
         max_new_tokens=1024,
     )
