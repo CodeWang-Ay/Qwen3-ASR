@@ -29,6 +29,7 @@ Note:
 
 import base64
 import io
+import time
 import urllib.request
 from typing import Tuple
 
@@ -39,12 +40,21 @@ import torch
 from qwen_asr import Qwen3ASRModel
 
 
-ASR_MODEL_PATH = "Qwen/Qwen3-ASR-1.7B"
-FORCED_ALIGNER_PATH = "Qwen/Qwen3-ForcedAligner-0.6B"
+# ASR_MODEL_PATH = "Qwen/Qwen3-ASR-1.7B"
+# FORCED_ALIGNER_PATH = "Qwen/Qwen3-ForcedAligner-0.6B"
 
-URL_ZH = "https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen3-ASR-Repo/asr_zh.wav"
+ASR_MODEL_PATH = "/data/LLM/Qwen3-ASR-0.6B"
+FORCED_ALIGNER_PATH = "/data/LLM/Qwen3-ForcedAligner-0.6B"
+
+# URL_ZH = "https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen3-ASR-Repo/asr_zh.wav"
+URL_ZH = "wjg.wav"
 URL_EN = "https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen3-ASR-Repo/asr_en.wav"
 
+# 从本地获取
+def _read_wav_file(file_path: str) -> bytes:                                                                                                                        
+    """Read local WAV file and return as bytes."""                                                                                                                  
+    with open(file_path, "rb") as f:                                                                                                                                
+        return f.read()  
 
 def _download_audio_bytes(url: str, timeout: int = 30) -> bytes:
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
@@ -76,17 +86,21 @@ def _print_result(title: str, results) -> None:
 
 
 def test_single_url(asr: Qwen3ASRModel) -> None:
+    start_time = time.time()
     results = asr.transcribe(
         audio=URL_ZH,
         language=None,
         return_time_stamps=False,
     )
+    cost_time = time.time() - start_time
+    print(f"识别时间: {cost_time:.2f}s")
     assert isinstance(results, list) and len(results) == 1
     _print_result("single-url (no forced language, no timestamps)", results)
 
 
 def test_batch_mixed(asr: Qwen3ASRModel) -> None:
-    zh_bytes = _download_audio_bytes(URL_ZH)
+    # zh_bytes = _download_audio_bytes(URL_ZH)
+    zh_bytes = _read_wav_file(URL_ZH)
     en_bytes = _download_audio_bytes(URL_EN)
 
     zh_b64 = _to_data_url_base64(zh_bytes, mime="audio/wav")
@@ -114,7 +128,8 @@ def test_single_with_timestamps(asr: Qwen3ASRModel) -> None:
 
 
 def test_batch_with_timestamps(asr: Qwen3ASRModel) -> None:
-    zh_bytes = _download_audio_bytes(URL_ZH)
+    # zh_bytes = _download_audio_bytes(URL_ZH)
+    zh_bytes = _read_wav_file(URL_ZH)
     zh_b64 = _to_data_url_base64(zh_bytes, mime="audio/wav")
 
     results = asr.transcribe(
@@ -135,7 +150,7 @@ def main() -> None:
         forced_aligner=FORCED_ALIGNER_PATH,
         forced_aligner_kwargs=dict(
             dtype=torch.bfloat16,
-            device_map="cuda:0",
+            device_map="cuda:7",
             # attn_implementation="flash_attention_2",
         ),
         max_inference_batch_size=32,
@@ -143,9 +158,9 @@ def main() -> None:
     )
 
     test_single_url(asr)
-    test_batch_mixed(asr)
-    test_single_with_timestamps(asr)
-    test_batch_with_timestamps(asr)
+    # test_batch_mixed(asr)
+    # test_single_with_timestamps(asr)
+    # test_batch_with_timestamps(asr)
 
 
 if __name__ == "__main__":

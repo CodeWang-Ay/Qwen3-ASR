@@ -31,9 +31,16 @@ import soundfile as sf
 from qwen_asr import Qwen3ASRModel
 
 
-ASR_MODEL_PATH = "Qwen/Qwen3-ASR-1.7B"
+# ASR_MODEL_PATH = "Qwen/Qwen3-ASR-1.7B"
+ASR_MODEL_PATH = "/data/LLM/Qwen3-ASR-0.6B"
 URL_EN = "https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen3-ASR-Repo/asr_en.wav"
+URL_ZH = "wjg.wav"
 
+# 从本地获取
+def _read_wav_file(file_path: str) -> bytes:                                                                                                                        
+    """Read local WAV file and return as bytes."""                                                                                                                  
+    with open(file_path, "rb") as f:                                                                                                                                
+        return f.read()  
 
 def _download_audio_bytes(url: str, timeout: int = 30) -> bytes:
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
@@ -48,7 +55,9 @@ def _read_wav_from_bytes(audio_bytes: bytes) -> Tuple[np.ndarray, int]:
 
 
 def _resample_to_16k(wav: np.ndarray, sr: int) -> np.ndarray:
-    """Simple resample to 16k if needed (uses linear interpolation; good enough for a test)."""
+    """
+    Simple resample to 16k if needed (uses linear interpolation; good enough for a test).
+    如有需要，可简单重采样至16k（使用线性插值；对于测试而言已足够）。"""
     if sr == 16000:
         return wav.astype(np.float32, copy=False)
     wav = wav.astype(np.float32, copy=False)
@@ -63,7 +72,7 @@ def _resample_to_16k(wav: np.ndarray, sr: int) -> np.ndarray:
 
 def run_streaming_case(asr: Qwen3ASRModel, wav16k: np.ndarray, step_ms: int) -> None:
     sr = 16000
-    step = int(round(step_ms / 1000.0 * sr))
+    step = int(round(step_ms / 1000.0 * sr))                                                    # 将毫秒转换为采样点数  毫秒转化为秒 * 采样频率 == 采样点数
 
     print(f"\n===== streaming step = {step_ms} ms =====")
     state = asr.init_streaming_state(
@@ -74,11 +83,11 @@ def run_streaming_case(asr: Qwen3ASRModel, wav16k: np.ndarray, step_ms: int) -> 
 
     pos = 0
     call_id = 0
-    while pos < wav16k.shape[0]:
+    while pos < wav16k.shape[0]:                                                                # 0.5s 一次
         seg = wav16k[pos : pos + step]
         pos += seg.shape[0]
         call_id += 1
-        asr.streaming_transcribe(seg, state)
+        asr.streaming_transcribe(seg, state)                                                    # 每次 seg 采样点个数
         print(f"[call {call_id:03d}] language={state.language!r} text={state.text!r}")
 
     asr.finish_streaming_transcribe(state)
@@ -93,11 +102,13 @@ def main() -> None:
         max_new_tokens=32, # set a small value for streaming
     )
 
-    audio_bytes = _download_audio_bytes(URL_EN)
-    wav, sr = _read_wav_from_bytes(audio_bytes)
-    wav16k = _resample_to_16k(wav, sr)
+    # audio_bytes = _download_audio_bytes(URL_EN)             # bytes类型
+    audio_bytes = _read_wav_file(URL_ZH)                      # 将wav文件转化为字节数组， 一个字节8位
+    wav, sr = _read_wav_from_bytes(audio_bytes)               # (len(audio_bytes) - 44 ) = len(wav) * 2,   一个16位
+    wav16k = _resample_to_16k(wav, sr)                        # len(wav16k) 表示采样点数        len(wav16k) / 16000 = 音频时长（秒）
+                                                              # float32  │ 32 位 │ 4 字节 │ Qwen3-ASR 使用的类型  一个采样点4字节， 32位
 
-    for step_ms in [500, 1000, 2000, 4000]:
+    for step_ms in [500, 1000, 2000, 4000]:                   # 以毫秒为单位
         run_streaming_case(asr, wav16k, step_ms)
 
 

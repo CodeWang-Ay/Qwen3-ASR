@@ -137,7 +137,8 @@ def build_parser() -> argparse.ArgumentParser:
         add_help=True,
     )
 
-    parser.add_argument("--asr-checkpoint", required=True, help="Qwen3-ASR model checkpoint path or HF repo id.")
+    parser.add_argument("--asr-checkpoint", default="/data/LLM/Qwen3-ASR-0.6B", 
+                        required=True, help="Qwen3-ASR model checkpoint path or HF repo id.")
     parser.add_argument(
         "--aligner-checkpoint",
         default=None,
@@ -146,7 +147,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     parser.add_argument(
         "--backend",
-        default="transformers",
+        # default="transformers",
+        default="vllm",
         choices=["transformers", "vllm"],
         help="Backend for ASR model loading (default: transformers).",
     )
@@ -181,7 +183,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     # Gradio server args
     parser.add_argument("--ip", default="0.0.0.0", help="Server bind IP for Gradio (default: 0.0.0.0).")
-    parser.add_argument("--port", type=int, default=8000, help="Server port for Gradio (default: 8000).")
+    # parser.add_argument("--port", type=int, default=8000, help="Server port for Gradio (default: 8000).")
+    parser.add_argument("--port", type=int, default=8888, help="Server port for Gradio (default: 8000).")
     parser.add_argument(
         "--share/--no-share",
         dest="share",
