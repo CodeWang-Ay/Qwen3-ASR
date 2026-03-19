@@ -5,8 +5,7 @@ ARG from=nvidia/cuda:${CUDA_VERSION}-devel-ubuntu22.04
 FROM ${from} as base
 
 ARG DEBIAN_FRONTEND=noninteractive
-RUN <<EOF
-apt update -y && apt upgrade -y && apt install -y --no-install-recommends  \
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
     git \
     git-lfs \
     python3 \
@@ -19,22 +18,21 @@ apt update -y && apt upgrade -y && apt install -y --no-install-recommends  \
     software-properties-common \
     ffmpeg \
     ca-certificates \
-&& rm -rf /var/lib/apt/lists/*
-EOF
+ && rm -rf /var/lib/apt/lists/*
 
-RUN wget https://github.com/Kitware/CMake/releases/download/v3.26.1/cmake-3.26.1-Linux-x86_64.sh \
-    -q -O /tmp/cmake-install.sh \
-    && chmod u+x /tmp/cmake-install.sh \
-    && mkdir /opt/cmake-3.26.1 \
+RUN wget -q https://github.com/Kitware/CMake/releases/download/v3.26.1/cmake-3.26.1-Linux-x86_64.sh \
+    -O /tmp/cmake-install.sh \
+    && chmod +x /tmp/cmake-install.sh \
+    && mkdir -p /opt/cmake-3.26.1 \
     && /tmp/cmake-install.sh --skip-license --prefix=/opt/cmake-3.26.1 \
     && rm /tmp/cmake-install.sh \
-    && ln -s /opt/cmake-3.26.1/bin/* /usr/local/bin
+    && ln -sf /opt/cmake-3.26.1/bin/* /usr/local/bin/
 
 RUN ln -s /usr/bin/python3 /usr/bin/python
 
 RUN git lfs install
 
-WORKDIR /data/shared/Qwen3-ASR
+WORKDIR /app
 
 ENV MAX_JOBS=32
 ENV NVCC_THREADS=2
@@ -42,20 +40,26 @@ ENV CCACHE_DIR=/root/.cache/ccache
 
 ARG BUNDLE_FLASH_ATTENTION=true
 
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip3 install -U pip setuptools wheel
+RUN pip3 install -U pip setuptools wheel
 
 RUN apt remove python3-blinker -y
 
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip3 install -U "qwen-asr[vllm]"
+# Copy requirements and install dependencies
+COPY requirement.txt /app/requirement.txt
+RUN pip3 install -U -r requirement.txt
 
-RUN --mount=type=cache,target=/root/.cache/ccache \
-    --mount=type=cache,target=/root/.cache/pip \
-    if [ "$BUNDLE_FLASH_ATTENTION" = "true" ]; then \
-        pip3 install -U flash-attn --no-build-isolation git+https://github.com/Dao-AILab/flash-attention.git; \
+# Flash Attention is already included in qwen-asr[vllm]
+RUN if [ "$BUNDLE_FLASH_ATTENTION" = "true" ]; then \
+        pip3 install -U flash-attn --no-build-isolation; \
     fi
 
-RUN rm -rf /root/.cache/pip
+# Cleanup
+RUN rm -rf /root/.cache/pip /var/lib/apt/lists/*
+
+# Copy qwen_asr_app.py
+COPY qwen_asr_app.py /app/qwen_asr_app.py
 
 EXPOSE 80
+
+# Default command: run the FastAPI application
+CMD ["python3", "qwen_asr_app.py"]

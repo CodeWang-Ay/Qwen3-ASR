@@ -1,9 +1,11 @@
+import os
+# 设置使用的 GPU 显卡序号（修改这里的数字选择不同的显卡）
+os.environ["CUDA_VISIBLE_DEVICES"] = "5"
+
 from qwen_asr import Qwen3ASRModel
 import wave
 import base64
-import os
 from typing import Union
-import base64
 import numpy as np
 import soundfile as sf
 from io import BytesIO
@@ -13,7 +15,8 @@ from io import BytesIO
 
 ASR_MODEL_PATH = "/data/LLM/Qwen3-ASR-0.6B"
 FORCED_ALIGNER_PATH = "/data/LLM/Qwen3-ForcedAligner-0.6B"
-URL_ZH = "wjg.wav"
+# URL_ZH = "wjg.wav"
+URL_ZH = "audio_data/01.wav"
 
 def load_qwen_asr_model(ASR_MODEL_PATH):
     qwen_asr_model = Qwen3ASRModel.LLM(
@@ -60,6 +63,7 @@ def asr_transcribe_by_pcm_data(asr_model: Qwen3ASRModel, audio_base64):
     # 方案1: 转换为 data URL base64 格式
     results = asr_model.transcribe(
         audio=audio_base64,
+        context=["面试者为阳强华 热词有matlab,AD9361,1024,2048,visuallog,"],
         language=None,
         return_time_stamps=False,
     )
@@ -111,13 +115,13 @@ def convert_wav_to_target_format(wav_path, target_format="numpy"):
         return [str_format, numpy_format]
 
 if __name__ == "__main__":
-    URL_ZH = "wjg.wav"
-    # qwen_asr_model = load_qwen_asr_model(ASR_MODEL_PATH)
+    # URL_ZH = "wjg.wav"
+    qwen_asr_model = load_qwen_asr_model(ASR_MODEL_PATH)
     # 使用完整的 WAV 文件字节（包含文件头），而不是纯 PCM 数据
     str_data = convert_wav_to_target_format(URL_ZH, "str")
     # print(f"\nbase64字符串（前80字符）: {str_data[:80]}...")
-    print(str_data)
-    # asr_transcribe_by_pcm_data(qwen_asr_model, str_data)
+    # print(str_data)
+    asr_transcribe_by_pcm_data(qwen_asr_model, str_data)
     
 
 

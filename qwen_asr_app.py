@@ -11,7 +11,9 @@ import numpy as np
 from fastapi import FastAPI, UploadFile, File, HTTPException, Body
 from fastapi.responses import JSONResponse
 from qwen_asr import Qwen3ASRModel
-
+import os
+# 设置使用的 GPU 显卡序号（修改这里的数字选择不同的显卡）
+os.environ["CUDA_VISIBLE_DEVICES"] = "7"
 # 初始化 FastAPI API
 app = FastAPI(title="Qwen3-ASR API", description="基于 Qwen3-ASR 的语音识别 API 服务")
 
@@ -104,7 +106,7 @@ def recognize_audio(audio_path: str, language: Optional[str] = None, context: Op
 async def transcribe_audio(
     audio_file: UploadFile = File(..., description="需要识别的音频文件（支持wav格式）"),
     language: Optional[str] = Body(None, description="指定语言（如 Chinese, English），不填则自动检测"),
-    context: Optional[str] = Body(None, description="上下文提示词")
+    context: Optional[str] = Body("", description="上下文提示文本，可选")
 ):
     """
     将上传的音频文件转换为文字
@@ -161,7 +163,7 @@ async def transcribe_pcm(
     channels: int = Body(1, description="声道数，默认单声道"),
     sample_width: int = Body(2, description="采样宽度（字节），默认2字节（16位）"),
     language: Optional[str] = Body(None, description="指定语言（如 Chinese, English），不填则自动检测"),
-    context: Optional[str] = Body(None, description="上下文提示词")
+    context: Optional[str] = Body("", description="上下文提示文本，可选")
 ):
     """
     将PCM原始音频数据转换为文字
@@ -318,7 +320,7 @@ async def health_check():
     }
 
 
-# 启动服务的入口
+# qwen_asr 启动服务的入口 可直接启动
 if __name__ == "__main__":
     asr = load_qwen_asr_model(ASR_MODEL_PATH)
     import uvicorn

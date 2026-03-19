@@ -2,10 +2,12 @@ import requests
 import base64
 import wave
 import os
+import json
 
 # API 配置
 BASE_URL = "http://localhost:8800"
-AUDIO_FILE_WAV = "wjg.wav"
+# AUDIO_FILE_WAV = "wjg.wav"
+AUDIO_FILE_WAV = "audio_data/02.wav"
 
 
 def test_transcribe_file():
