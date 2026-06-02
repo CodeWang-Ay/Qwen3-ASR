@@ -1,0 +1,439 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Paraformer 实时语音识别 (WebSocket)</title>
+  <style>
+    :root{
+      --bg:#ffffff;
+      --card:#ffffff;
+      --muted:#5b6472;
+      --text:#0f172a;
+      --border:#e5e7eb;
+      --ok:#059669;
+      --warn:#d97706;
+      --danger:#e11d48;
+    }
+
+    html, body { height: 100%; }
+
+    body{
+      margin:0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Noto Sans";
+      background: var(--bg);
+      color:var(--text);
+    }
+
+    .wrap{
+      height: 100vh;
+      max-width: none;
+      margin: 0;
+      padding: 16px;
+      box-sizing: border-box;
+      display: flex;
+    }
+
+    .card{
+      width: 100%;
+      height: 100%;
+      background: var(--card);
+      border:1px solid var(--border);
+      border-radius: 14px;
+      padding: 16px;
+      box-sizing: border-box;
+      box-shadow: 0 10px 30px rgba(0,0,0,.06);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      min-height: 0;
+    }
+
+    h1{ font-size: 18px; margin: 0; letter-spacing:.2px; font-weight: 600;}
+
+    .row{ display:flex; gap:12px; align-items:center; flex-wrap: wrap; }
+
+    button{
+      border:1px solid var(--border); border-radius: 12px;
+      padding: 10px 16px; cursor:pointer; color:var(--text);
+      background: #f8fafc;
+      transition: transform .05s ease, background .15s ease, border-color .15s ease;
+      font-weight: 600;
+      font-size: 14px;
+    }
+    button:hover{ background: #f1f5f9; border-color:#cbd5e1; }
+    button:active{ transform: translateY(1px); }
+    button.primary{ border-color: rgba(5,150,105,.35); background: rgba(5,150,105,.10); }
+    button.danger{ border-color: rgba(225,29,72,.35); background: rgba(225,29,72,.10); }
+    button:disabled{ opacity:.5; cursor:not-allowed; }
+
+    .pill{
+      font-size: 12px; padding: 6px 10px; border-radius: 999px;
+      border:1px solid var(--border); color: var(--muted);
+      background: #f8fafc;
+      user-select:none;
+    }
+    .pill.ok{ color: #065f46; border-color: rgba(5,150,105,.35); background: rgba(5,150,105,.10); }
+    .pill.warn{ color: #92400e; border-color: rgba(217,119,6,.35); background: rgba(217,119,6,.10); }
+    .pill.err{ color: #9f1239; border-color: rgba(225,29,72,.35); background: rgba(225,29,72,.10); }
+
+    .panel{
+      border:1px solid var(--border);
+      border-radius: 12px;
+      background: #ffffff;
+      padding: 12px;
+    }
+
+    .panel.textpanel{
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    .label{ color:var(--muted); font-size: 12px; margin-bottom: 6px; }
+    .mono{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New"; }
+
+    #text{
+      flex: 1;
+      min-height: 0;
+      white-space: pre-wrap;
+      line-height: 1.6;
+      font-size: 15px;
+      padding: 12px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: #f8fafc;
+      overflow: auto;
+    }
+
+    a{ color: #2563eb; text-decoration: none; font-size: 13px; font-weight: 600; }
+
+    .info{ font-size: 13px; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>Paraformer 实时语音识别 (WebSocket)</h1>
+
+      <div class="row">
+        <button id="btnStart" class="primary">开始识别</button>
+        <button id="btnStop" class="danger" disabled>停止识别</button>
+        <span id="status" class="pill warn">未开始</span>
+        <a href="javascript:void(0)" id="btnClear" style="margin-left:auto;">清空文本</a>
+      </div>
+
+      <div class="panel">
+        <div class="row">
+          <span class="info">模型: paraformer-zh-streaming + fsmn-vad</span>
+        </div>
+      </div>
+
+      <div class="panel textpanel">
+        <div class="label">识别文本</div>
+        <div id="text"></div>
+      </div>
+    </div>
+  </div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+
+  const btnStart = $("btnStart");
+  const btnStop  = $("btnStop");
+  const btnClear = $("btnClear");
+  const statusEl = $("status");
+  const textEl   = $("text");
+
+  // VAD 块大小 200ms，与后端一致
+  const VAD_CHUNK_MS = 200;
+  const TARGET_SR = 16000;
+
+  let audioCtx = null;
+  let processor = null;
+  let source = null;
+  let mediaStream = null;
+
+  let ws = null;          // WebSocket 连接
+  let sessionId = null;
+  let running = false;
+
+  let buf = new Float32Array(0);
+  let sending = false;
+
+  // 当前句子的文本
+  let currentSentence = "";
+  let allText = [];
+
+  function setStatus(text, cls){
+    statusEl.textContent = text;
+    statusEl.className = "pill " + (cls || "");
+  }
+
+  function lockUI(on){
+    btnStart.disabled = on;
+    btnStop.disabled = !on;
+  }
+
+  function concatFloat32(a, b){
+    const out = new Float32Array(a.length + b.length);
+    out.set(a, 0);
+    out.set(b, a.length);
+    return out;
+  }
+
+  function resampleLinear(input, srcSr, dstSr){
+    if (srcSr === dstSr) return input;
+    const ratio = dstSr / srcSr;
+    const outLen = Math.max(0, Math.round(input.length * ratio));
+    const out = new Float32Array(outLen);
+    for (let i = 0; i < outLen; i++){
+      const x = i / ratio;
+      const x0 = Math.floor(x);
+      const x1 = Math.min(x0 + 1, input.length - 1);
+      const t = x - x0;
+      out[i] = input[x0] * (1 - t) + input[x1] * t;
+    }
+    return out;
+  }
+
+  function updateTextDisplay(){
+    // 显示所有已完成句子 + 当前句子
+    textEl.textContent = allText.join("") + currentSentence;
+    // 滚动到底部
+    textEl.scrollTop = textEl.scrollHeight;
+  }
+
+  function initWebSocket(){
+    // 构建 WebSocket URL
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const host = window.location.host;
+    const wsUrl = `${protocol}//${host}/ws/asr`;
+
+    ws = new WebSocket(wsUrl);
+    ws.binaryType = 'arraybuffer';  // 设置二进制模式
+
+    ws.onopen = () => {
+      console.log("WebSocket connected");
+      setStatus("已连接", "ok");
+    };
+
+    ws.onmessage = (event) => {
+      const msg = JSON.parse(event.data);
+      console.log("WebSocket message:", msg);
+
+      if (msg.type === "connected") {
+        sessionId = msg.session_id;
+        console.log("Session ID:", sessionId);
+      } else if (msg.type === "result") {
+        if (msg.is_sentence_end && msg.text) {
+          // 句子结束，保存到历史
+          allText.push(msg.text);
+          currentSentence = "";
+        } else if (msg.text) {
+          // 句子进行中，更新当前句子
+          currentSentence = msg.text;
+        }
+        updateTextDisplay();
+        if (running) setStatus("识别中...", "ok");
+      } else if (msg.type === "final_result") {
+        if (msg.is_sentence_end && msg.text) {
+          allText.push(msg.text);
+          currentSentence = "";
+        } else if (msg.text) {
+          currentSentence = msg.text;
+        }
+        updateTextDisplay();
+        setStatus("已停止", "");
+      } else if (msg.type === "error") {
+        console.error("WebSocket error:", msg.message);
+        setStatus("错误: " + msg.message, "err");
+      }
+    };
+
+    ws.onerror = (error) => {
+      console.error("WebSocket error:", error);
+      setStatus("连接错误", "err");
+    };
+
+    ws.onclose = () => {
+      console.log("WebSocket closed");
+      if (running) {
+        setStatus("连接断开", "err");
+        stopAudioPipeline();
+        running = false;
+        lockUI(false);
+      }
+    };
+  }
+
+  function sendAudioChunk(float32_16k){
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(float32_16k.buffer);  // 发送 ArrayBuffer
+    }
+  }
+
+  function sendFinish(){
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send("finish");  // 发送文本消息
+    }
+  }
+
+  btnClear.onclick = () => {
+    allText = [];
+    currentSentence = "";
+    updateTextDisplay();
+  };
+
+  async function stopAudioPipeline(){
+    try{
+      if (processor){ processor.disconnect(); processor.onaudioprocess = null; }
+      if (source) source.disconnect();
+      if (audioCtx) await audioCtx.close();
+      if (mediaStream) mediaStream.getTracks().forEach(t => t.stop());
+    }catch(e){}
+    processor = null; source = null; audioCtx = null; mediaStream = null;
+  }
+
+  btnStart.onclick = async () => {
+    if (running) return;
+
+    allText = [];
+    currentSentence = "";
+    updateTextDisplay();
+
+    buf = new Float32Array(0);
+
+    try{
+      setStatus("启动中...", "warn");
+      lockUI(true);
+
+      // 初始化 WebSocket 连接
+      initWebSocket();
+
+      // 等待 WebSocket 连接建立
+      await new Promise((resolve, reject) => {
+        if (ws.readyState === WebSocket.OPEN) {
+          resolve();
+        } else {
+          ws.onopen = resolve;
+          ws.onerror = reject;
+          setTimeout(() => reject(new Error("WebSocket connection timeout")), 5000);
+        }
+      });
+
+      // 获取麦克风
+      mediaStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          channelCount: 1,
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        },
+        video: false
+      });
+
+      // 创建音频处理上下文
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      source = audioCtx.createMediaStreamSource(mediaStream);
+
+      // 创建脚本处理器
+      processor = audioCtx.createScriptProcessor(4096, 1, 1);
+      const chunkSamples = Math.round(TARGET_SR * (VAD_CHUNK_MS / 1000));
+
+      processor.onaudioprocess = (e) => {
+        if (!running) return;
+        const input = e.inputBuffer.getChannelData(0);
+        const resampled = resampleLinear(input, audioCtx.sampleRate, TARGET_SR);
+        buf = concatFloat32(buf, resampled);
+        if (!sending) pump();
+      };
+
+      source.connect(processor);
+      processor.connect(audioCtx.destination);
+
+      running = true;
+      setStatus("识别中...", "ok");
+
+    }catch(err){
+      console.error(err);
+      setStatus("启动失败: " + err.message, "err");
+      lockUI(false);
+      running = false;
+      sessionId = null;
+      await stopAudioPipeline();
+      if (ws) ws.close();
+      ws = null;
+    }
+  };
+
+  async function pump(){
+    if (sending) return;
+    sending = true;
+
+    const chunkSamples = Math.round(TARGET_SR * (VAD_CHUNK_MS / 1000));
+
+    try{
+      while (running && buf.length >= chunkSamples && ws && ws.readyState === WebSocket.OPEN){
+        const chunk = buf.slice(0, chunkSamples);
+        buf = buf.slice(chunkSamples);
+
+        sendAudioChunk(chunk);
+        // WebSocket 是异步的，结果通过 onmessage 回调返回
+      }
+    }catch(err){
+      console.error(err);
+      if (running) setStatus("错误: " + err.message, "err");
+    }finally{
+      sending = false;
+    }
+  }
+
+  btnStop.onclick = async () => {
+    if (!running) return;
+
+    running = false;
+    setStatus("停止中...", "warn");
+    lockUI(false);
+
+    await stopAudioPipeline();
+
+    try{
+      if (ws && ws.readyState === WebSocket.OPEN){
+        sendFinish();
+        // 等待最终结果
+        await new Promise((resolve) => {
+          ws.onmessage = (event) => {
+            const msg = JSON.parse(event.data);
+            if (msg.type === "final_result") {
+              if (msg.is_sentence_end && msg.text) {
+                allText.push(msg.text);
+                currentSentence = "";
+              } else if (msg.text) {
+                currentSentence = msg.text;
+              }
+              updateTextDisplay();
+              resolve();
+            }
+          };
+          setTimeout(resolve, 2000);  // 超时保护
+        });
+      }
+      setStatus("已停止", "");
+    }catch(err){
+      console.error(err);
+      setStatus("停止失败: " + err.message, "err");
+    }finally{
+      if (ws) ws.close();
+      ws = null;
+      sessionId = null;
+      buf = new Float32Array(0);
+      sending = false;
+    }
+  };
+})();
+</script>
+</body>
+</html>
