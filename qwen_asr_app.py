@@ -5,6 +5,7 @@ import torch
 import base64
 import tempfile
 import io
+import asyncio
 from typing import Optional
 
 import numpy as np
@@ -13,7 +14,7 @@ from fastapi.responses import JSONResponse
 from qwen_asr import Qwen3ASRModel
 import os
 # 设置使用的 GPU 显卡序号（修改这里的数字选择不同的显卡）
-os.environ["CUDA_VISIBLE_DEVICES"] = "7"
+os.environ["CUDA_VISIBLE_DEVICES"] = "3"
 # 初始化 FastAPI API
 app = FastAPI(title="Qwen3-ASR API", description="基于 Qwen3-ASR 的语音识别 API 服务")
 
@@ -44,7 +45,7 @@ def load_qwen_asr_model(ASR_MODEL_PATH):
     return qwen_asr_model
 
 
-def _to_data_url_base64(audio_bytes: bytes, mime: str = "audio/wav") -> str:
+async def _to_data_url_base64(audio_bytes: bytes, mime: str = "audio/wav") -> str:
     """将音频字节转为 data URL base64 格式"""
     b64 = base64.b64encode(audio_bytes).decode("utf-8")
     return f"data:{mime};base64,{b64}"
@@ -58,7 +59,7 @@ def _read_wav_from_bytes(audio_bytes: bytes):
     return np.asarray(wav, dtype=np.float32), int(sr)
 
 
-def recognize_audio(audio_path: str, language: Optional[str] = None, context: Optional[str] = None) -> dict:
+async def recognize_audio(audio_path: str, language: Optional[str] = None, context: Optional[str] = None) -> dict:
     """
     通用音频识别函数
     :param audio_path: 音频文件路径（WAV格式）
@@ -71,7 +72,7 @@ def recognize_audio(audio_path: str, language: Optional[str] = None, context: Op
         audio_bytes = f.read()
 
     # 转换为 data URL base64 格式
-    audio_b64 = _to_data_url_base64(audio_bytes, mime="audio/wav")
+    audio_b64 = await _to_data_url_base64(audio_bytes, mime="audio/wav")
 
     # 构建参数
     kwargs = {
@@ -83,6 +84,7 @@ def recognize_audio(audio_path: str, language: Optional[str] = None, context: Op
 
     # 调用 ASR 模型
     results = asr.transcribe(**kwargs)
+    # results = await asyncio.to_thread(asr.transcribe, **kwargs)
 
     # 解析结果
     if results and len(results) > 0:
@@ -124,7 +126,7 @@ async def transcribe_audio(
             temp_audio_path = temp_file.name
 
         # 调用通用识别函数
-        result = recognize_audio(temp_audio_path, language=language, context=context)
+        result = await recognize_audio(temp_audio_path, language=language, context=context)
 
         # 计算耗时
         cost_time = round(time.time() - start_time, 2)
