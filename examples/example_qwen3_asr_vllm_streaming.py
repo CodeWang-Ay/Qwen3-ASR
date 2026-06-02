@@ -30,7 +30,6 @@ import soundfile as sf
 
 from qwen_asr import Qwen3ASRModel
 
-
 # ASR_MODEL_PATH = "Qwen/Qwen3-ASR-1.7B"
 ASR_MODEL_PATH = "/data/LLM/Qwen3-ASR-0.6B"
 URL_EN = "https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen3-ASR-Repo/asr_en.wav"

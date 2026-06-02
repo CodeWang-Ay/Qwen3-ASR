@@ -424,6 +424,7 @@ def index():
     return Response(INDEX_HTML, mimetype="text/html; charset=utf-8")
 
 
+# 配置跨域访问
 @app.route("/api/<path:path>", methods=["OPTIONS"])
 @app.route("/api", methods=["OPTIONS"])
 def handle_options(path=None):
@@ -434,6 +435,7 @@ def handle_options(path=None):
     response.headers.add('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
     return response
 
+# 
 from loguru import logger
 @app.post("/api/start")
 def api_start():
@@ -502,7 +504,7 @@ def parse_args():
 
     p.add_argument("--unfixed-chunk-num", type=int, default=4)
     p.add_argument("--unfixed-token-num", type=int, default=5)
-    p.add_argument("--chunk-size-sec", type=float, default=1.0)
+    p.add_argument("--chunk-size-sec", type=float, default=0.6)
     return p.parse_args()
 
 
