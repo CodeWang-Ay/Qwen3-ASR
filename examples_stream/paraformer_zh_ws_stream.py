@@ -358,7 +358,7 @@ def _process_audio_chunk_vad(wav: np.ndarray, session: Session) -> dict:
 @app.get("/", response_class=HTMLResponse)
 async def index():
     """返回 HTML 页面"""
-    html_path = os.path.join(os.path.dirname(__file__), "paraformer_zh_ws_index.html")
+    html_path = os.path.join(os.path.dirname(__file__), "ws_index.html")
     with open(html_path, "r", encoding="utf-8") as f:
         html_content = f.read()
     return HTMLResponse(content=html_content)
@@ -629,5 +629,6 @@ def main():
         log_level="info",
     )
 
+# 开启fun_asr, paraformer_zh websocket 服务， 支持PTT[Push-To-Talk] 模式 和 VAD 两种模式
 if __name__ == "__main__":
     main()
