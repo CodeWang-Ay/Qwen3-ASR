@@ -29,3 +29,5 @@ for result in results:
     print(f"文件: {result['file']}, 状态: {result['status']}")
     if result['status'] == 'success':
         print(f"  识别结果: {result['text'][:100]}...")
+
+# 测试更新
